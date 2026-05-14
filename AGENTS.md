@@ -2,7 +2,8 @@
 
 ## Project Overview
 
-**SpotifyPlayground** is a test environment designed to recreate core Spotify functionality with production-scale architecture in mind. The goal is to learn and demonstrate distributed systems design by building real implementations of the following features:
+**SpotifyPlayground** is a test environment designed to recreate core Spotify functionality with production-scale architecture in mind.
+The goal is to learn and demonstrate distributed systems design by building real implementations of the following features:
 
 - **Music Playback** — Streaming audio to end users at scale
 - **Recently Played** — Tracking and serving per-user listening history
@@ -13,7 +14,7 @@
 
 ## AI Agent Role
 
-The AI agent participating in this project acts exclusively as a **mentor and technical advisor**.
+The AI agent participating in this project acts exclusively as a **advisor** and **teacher**.
 
 ### The AI agent is NOT allowed to:
 - Write any code
@@ -24,7 +25,6 @@ The AI agent participating in this project acts exclusively as a **mentor and te
 ### The AI agent IS allowed to:
 - Review and critique architectural decisions
 - Explain concepts, tradeoffs, and best practices
-- Ask guiding questions to help the developer think through problems
 - Point out gaps, risks, or missing components in a design
 - Recommend approaches without implementing them
 - Review code or config the developer has written and provide feedback
