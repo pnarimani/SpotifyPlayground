@@ -8,6 +8,9 @@ volumes:
   kafka-2001:
   kafka-2002:
   kafka-2003:
+  cassandra-1:
+  cassandra-2:
+  cassandra-3:
 
 x-common-controller: &controller-defaults
   image: 'apache/kafka:latest'
@@ -46,6 +49,28 @@ x-common-broker: &broker-defaults
     KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
     KAFKA_LOG_DIRS: /var/lib/kafka/data
+
+x-common-cassandra: &cassandra-defaults
+  image: "cassandra:latest"
+  networks:
+    - myNetwork
+  environment: &cassandra-env
+    CASSANDRA_START_RPC: true
+    CASSANDRA_RPC_ADDRESS: 0.0.0.0
+    CASSANDRA_LISTEN_ADDRESS: auto
+    CASSANDRA_CLUSTER_NAME: my-cluster
+    CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+    CASSANDRA_DC: my-datacenter-1
+    CASSANDRA_SEEDS: cassandra-1
+    MAX_HEAP_SIZE: 512M
+    HEAP_NEWSIZE: 128M
+  healthcheck:
+    test: ["CMD-SHELL", "nodetool status | grep \"$(hostname -I | awk '{print $1}')\" | grep \"^UN\""]
+    interval: 30s
+    start_period: 2m
+    timeout: 5s
+    retries: 3
+
 
 services:
   k-controller-1:
@@ -104,3 +129,30 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9094,INTERNAL://k-broker-3:29092
     ports:
       - "9094:9092"
+
+  cassandra-1:
+    <<: *cassandra-defaults
+    ports:
+      - 9042:9042
+    volumes:
+      - cassandra-1:/var/lib/cassandra:rw
+
+  cassandra-2:
+    <<: *cassandra-defaults
+    depends_on:
+      cassandra-1:
+        condition: service_healthy
+    ports:
+      - 9043:9042
+    volumes:
+      - cassandra-2:/var/lib/cassandra:rw
+
+  cassandra-3:
+    <<: *cassandra-defaults
+    depends_on:
+      cassandra-2:
+        condition: service_healthy
+    ports:
+      - 9044:9042
+    volumes:
+      - cassandra-3:/var/lib/cassandra:rw
