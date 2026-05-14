@@ -1,0 +1,106 @@
+networks:
+  myNetwork:
+
+volumes:
+  kafka-1001:
+  kafka-1002:
+  kafka-1003:
+  kafka-2001:
+  kafka-2002:
+  kafka-2003:
+
+x-common-controller: &controller-defaults
+  image: 'apache/kafka:latest'
+  networks:
+    - myNetwork
+  healthcheck:
+    test: ["CMD", "/opt/kafka/bin/kafka-metadata-quorum.sh", "--bootstrap-controller", "localhost:9093", "describe", "--status"]
+    start_period: 30s
+    interval: 10s
+    timeout: 5s
+    retries: 3
+  environment: &controller-env
+    KAFKA_PROCESS_ROLES: controller
+    KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    KAFKA_CONTROLLER_QUORUM_VOTERS: "1001@k-controller-1:9093,1002@k-controller-2:9093,1003@k-controller-3:9093"
+    KAFKA_LISTENERS: CONTROLLER://:9093
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT
+    KAFKA_LOG_DIRS: /var/lib/kafka/data
+
+x-common-broker: &broker-defaults
+  image: 'apache/kafka:latest'
+  networks:
+    - myNetwork
+  depends_on:
+    k-controller-1:
+      condition: service_healthy
+    k-controller-2:
+      condition: service_healthy
+    k-controller-3:
+      condition: service_healthy
+  environment: &broker-env
+    KAFKA_PROCESS_ROLES: broker
+    KAFKA_CONTROLLER_QUORUM_VOTERS: "1001@k-controller-1:9093,1002@k-controller-2:9093,1003@k-controller-3:9093"
+    KAFKA_LISTENERS: PLAINTEXT://:9092,INTERNAL://:29092
+    KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+    KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+    KAFKA_LOG_DIRS: /var/lib/kafka/data
+
+services:
+  k-controller-1:
+    <<: *controller-defaults
+    volumes:
+      - kafka-1001:/var/lib/kafka/data
+    environment:
+      <<: *controller-env
+      KAFKA_NODE_ID: 1001
+
+  k-controller-2:
+    <<: *controller-defaults
+    volumes:
+      - kafka-1002:/var/lib/kafka/data
+    environment:
+      <<: *controller-env
+      KAFKA_NODE_ID: 1002
+
+  k-controller-3:
+    <<: *controller-defaults
+    volumes:
+      - kafka-1003:/var/lib/kafka/data
+    environment:
+      <<: *controller-env
+      KAFKA_NODE_ID: 1003
+
+  k-broker-1:
+    <<: *broker-defaults
+    volumes:
+      - kafka-2001:/var/lib/kafka/data
+    environment:
+      <<: *broker-env
+      KAFKA_NODE_ID: 2001
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://k-broker-1:29092
+    ports:
+      - "9092:9092"
+
+  k-broker-2:
+    <<: *broker-defaults
+    volumes:
+      - kafka-2002:/var/lib/kafka/data
+    environment:
+      <<: *broker-env
+      KAFKA_NODE_ID: 2002
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9093,INTERNAL://k-broker-2:29092
+    ports:
+      - "9093:9092"
+
+  k-broker-3:
+    <<: *broker-defaults
+    volumes:
+      - kafka-2003:/var/lib/kafka/data
+    environment:
+      <<: *broker-env
+      KAFKA_NODE_ID: 2003
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9094,INTERNAL://k-broker-3:29092
+    ports:
+      - "9094:9092"
