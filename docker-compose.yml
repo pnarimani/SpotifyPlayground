@@ -13,11 +13,19 @@ volumes:
   cassandra-3:
 
 x-common-controller: &controller-defaults
-  image: 'apache/kafka:latest'
+  image: "apache/kafka:latest"
   networks:
     - myNetwork
   healthcheck:
-    test: ["CMD", "/opt/kafka/bin/kafka-metadata-quorum.sh", "--bootstrap-controller", "localhost:9093", "describe", "--status"]
+    test:
+      [
+        "CMD",
+        "/opt/kafka/bin/kafka-metadata-quorum.sh",
+        "--bootstrap-controller",
+        "localhost:9093",
+        "describe",
+        "--status",
+      ]
     start_period: 30s
     interval: 10s
     timeout: 5s
@@ -31,7 +39,7 @@ x-common-controller: &controller-defaults
     KAFKA_LOG_DIRS: /var/lib/kafka/data
 
 x-common-broker: &broker-defaults
-  image: 'apache/kafka:latest'
+  image: "apache/kafka:latest"
   networks:
     - myNetwork
   depends_on:
@@ -41,6 +49,19 @@ x-common-broker: &broker-defaults
       condition: service_healthy
     k-controller-3:
       condition: service_healthy
+  healthcheck:
+    test:
+      [
+        "CMD",
+        "/opt/kafka/bin/kafka-topics.sh",
+        "--bootstrap-server",
+        "localhost:9092",
+        "--list",
+      ]
+    start_period: 30s
+    interval: 10s
+    timeout: 5s
+    retries: 3
   environment: &broker-env
     KAFKA_PROCESS_ROLES: broker
     KAFKA_CONTROLLER_QUORUM_VOTERS: "1001@k-controller-1:9093,1002@k-controller-2:9093,1003@k-controller-3:9093"
@@ -54,7 +75,7 @@ x-common-cassandra: &cassandra-defaults
   image: "cassandra:latest"
   networks:
     - myNetwork
-  environment: &cassandra-env
+  environment:
     CASSANDRA_START_RPC: true
     CASSANDRA_RPC_ADDRESS: 0.0.0.0
     CASSANDRA_LISTEN_ADDRESS: auto
@@ -65,14 +86,27 @@ x-common-cassandra: &cassandra-defaults
     MAX_HEAP_SIZE: 512M
     HEAP_NEWSIZE: 128M
   healthcheck:
-    test: ["CMD-SHELL", "nodetool status | grep \"$(hostname -I | awk '{print $1}')\" | grep \"^UN\""]
+    test:
+      [
+        "CMD-SHELL",
+        'nodetool status | grep "$(hostname -I | awk ''{print $1}'')" | grep "^UN"',
+      ]
     interval: 30s
     start_period: 2m
     timeout: 5s
     retries: 3
 
-
 services:
+  playback:
+    build: ./services/playback
+    networks:
+      - myNetwork
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BROKERS: k-broker-1:29092,k-broker-2:29092,k-broker-3:29092
+
   k-controller-1:
     <<: *controller-defaults
     volumes:
@@ -129,6 +163,33 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9094,INTERNAL://k-broker-3:29092
     ports:
       - "9094:9092"
+
+  kafka-init:
+    image: apache/kafka:latest
+    networks:
+      - myNetwork
+    depends_on:
+      k-broker-1:
+        condition: service_healthy
+      k-broker-2:
+        condition: service_healthy
+      k-broker-3:
+        condition: service_healthy
+    entrypoint:
+      [
+        "/opt/kafka/bin/kafka-topics.sh",
+        "--bootstrap-server",
+        "k-broker-1:29092",
+        "--create",
+        "--if-not-exists",
+        "--topic",
+        "play-events",
+        "--partitions",
+        "6",
+        "--replication-factor",
+        "3"
+      ]
+    restart: "no"
 
   cassandra-1:
     <<: *cassandra-defaults
