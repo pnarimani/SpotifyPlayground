@@ -15,7 +15,7 @@ import (
 
 const sampleUserId = "default_user_id"
 
-type MessageData struct {
+type messageData struct {
 	UserId   string `json:"user_id"`
 	TrackId  string `json:"track_id"`
 	PlayedAt int64  `json:"played_at"`
@@ -43,7 +43,7 @@ func main() {
 		select {
 		case <-ticker.C:
 			now := time.Now()
-			msg := MessageData{
+			msg := messageData{
 				UserId:   sampleUserId,
 				TrackId:  "sample_track_id",
 				PlayedAt: now.Unix(),

@@ -86,11 +86,7 @@ x-common-cassandra: &cassandra-defaults
     MAX_HEAP_SIZE: 512M
     HEAP_NEWSIZE: 128M
   healthcheck:
-    test:
-      [
-        "CMD-SHELL",
-        'nodetool status | grep "$(hostname -I | awk ''{print $1}'')" | grep "^UN"',
-      ]
+    test: ["CMD-SHELL", "cqlsh localhost 9042 -e 'describe cluster'"]
     interval: 30s
     start_period: 2m
     timeout: 5s
@@ -103,6 +99,17 @@ services:
       - myNetwork
     depends_on:
       kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BROKERS: k-broker-1:29092,k-broker-2:29092,k-broker-3:29092
+  recently-played:
+    build: ./services/recently-played
+    networks:
+      - myNetwork
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      cassandra-migrate:
         condition: service_completed_successfully
     environment:
       KAFKA_BROKERS: k-broker-1:29092,k-broker-2:29092,k-broker-3:29092
@@ -190,6 +197,26 @@ services:
         "3"
       ]
     restart: "no"
+
+  cassandra-migrate:
+    image: "cassandra:latest"
+    networks:
+      - myNetwork
+    restart: "no"
+    depends_on:
+      cassandra-1:
+        condition: service_healthy
+      cassandra-2:
+        condition: service_healthy
+      cassandra-3:
+        condition: service_healthy
+    volumes:
+      - ./services/recently-played/migrations:/migrations:ro
+    entrypoint: >
+      bash -c "
+        cqlsh cassandra-1 9042 -f /migrations/001_create_keyspace.up.cql &&
+        cqlsh cassandra-1 9042 -f /migrations/002_create_plays_table.up.cql
+      "
 
   cassandra-1:
     <<: *cassandra-defaults
