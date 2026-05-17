@@ -82,7 +82,7 @@ func Read(ctx context.Context, userId string, limit int) ([]Entry, error) {
 		for iter.Scan(&trackId, &playedAt) {
 			results = append(results, Entry{
 				UserID:   userId,
-				PlayedAt: playedAt.Unix(),
+				PlayedAt: playedAt.UnixMilli(),
 				TrackId:  trackId,
 			})
 		}
