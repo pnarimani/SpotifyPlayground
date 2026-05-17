@@ -6,4 +6,6 @@ func GetRecentTracksCount() int {
 	return 50
 }
 
-
+func GetDatabaseReadCount() int {
+	return GetRecentTracksCount() * 4
+}
