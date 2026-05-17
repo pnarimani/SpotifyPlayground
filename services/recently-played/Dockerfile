@@ -1,11 +1,20 @@
 FROM golang:1.26-alpine AS builder
 WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download && go mod verify
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o server
 
-FROM alpine
+COPY go.work go.work.sum ./
+COPY middleware/go.mod middleware/go.sum ./middleware/
+COPY recently-played/go.mod recently-played/go.sum ./recently-played/
+
+RUN cd /app/middleware && go mod download && go mod verify \
+ && cd /app/recently-played && go mod download && go mod verify
+
+COPY middleware ./middleware
+COPY recently-played ./recently-played
+
+WORKDIR /app/recently-played
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/server .
+
+FROM alpine:3.20
 WORKDIR /app
-COPY --from=builder /app/server .
-CMD [ "./server" ]
+COPY --from=builder /app/server ./server
+CMD ["./server"]

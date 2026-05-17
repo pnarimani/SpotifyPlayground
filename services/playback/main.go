@@ -46,7 +46,7 @@ func main() {
 			msg := messageData{
 				UserId:   sampleUserId,
 				TrackId:  "sample_track_id",
-				PlayedAt: now.Unix(),
+				PlayedAt: now.UnixMilli(),
 			}
 
 			msgBytes, err := json.Marshal(msg)

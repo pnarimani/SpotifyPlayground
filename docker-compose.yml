@@ -103,7 +103,9 @@ services:
     environment:
       KAFKA_BROKERS: k-broker-1:29092,k-broker-2:29092,k-broker-3:29092
   recently-played:
-    build: ./services/recently-played
+    build:
+      context: ./services
+      dockerfile: ./recently-played/Dockerfile
     networks:
       - myNetwork
     depends_on:
@@ -113,6 +115,7 @@ services:
         condition: service_completed_successfully
     environment:
       KAFKA_BROKERS: k-broker-1:29092,k-broker-2:29092,k-broker-3:29092
+      CASSANDRA_HOSTS: cassandra-1,cassandra-2,cassandra-3
 
   k-controller-1:
     <<: *controller-defaults

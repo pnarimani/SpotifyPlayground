@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
+	"recently_played/config"
 	"recently_played/db"
 
 	"github.com/segmentio/kafka-go"
@@ -18,9 +19,11 @@ type messageData struct {
 
 func ConsumeEvents(ctx context.Context) error {
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		GroupID:     "recently-played",
-		Topic:       "play-events",
+		GroupID: "recently-played",
+		Topic:   "play-events",
+		Brokers: config.GetKafkaBrokers(),
 	})
+	defer reader.Close()
 
 	for {
 		msg, err := reader.ReadMessage(ctx)
@@ -30,14 +33,14 @@ func ConsumeEvents(ctx context.Context) error {
 
 		data := messageData{}
 		if err := json.Unmarshal(msg.Value, &data); err != nil {
-			log.Fatal(err) 
+			slog.ErrorContext(ctx, "failed to parse json", "json", string(msg.Value), "key", string(msg.Key))
 			continue
 		}
 
 		if err := db.Write(ctx, db.Entry{
-			UserID: data.UserId,
+			UserID:   data.UserId,
 			PlayedAt: data.PlayedAt,
-			TrackId: data.TrackId,
+			TrackId:  data.TrackId,
 		}); err != nil {
 			return fmt.Errorf("failed to write to cassandra, err: %w", err)
 		}

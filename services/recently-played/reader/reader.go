@@ -7,9 +7,9 @@ import (
 )
 
 type Entry struct {
-	UserId   string
-	PlayedAt int64
-	TrackId  string
+	UserId   string `json:"user_id"`
+	PlayedAt int64  `json:"played_at"`
+	TrackId  string `json:"track_id"`
 }
 
 func GetLastPlayedTracks(ctx context.Context, userId string) ([]Entry, error) {
