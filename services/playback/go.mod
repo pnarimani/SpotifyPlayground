@@ -1,6 +1,6 @@
 module playback
 
-go 1.26.3
+go 1.26
 
 require (
 	github.com/klauspost/compress v1.15.9 // indirect
