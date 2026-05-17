@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"recently_played/config"
 	"recently_played/db"
@@ -26,8 +27,13 @@ func ConsumeEvents(ctx context.Context) error {
 	defer reader.Close()
 
 	for {
+		slog.DebugContext(ctx, "waiting for message")
+
 		msg, err := reader.ReadMessage(ctx)
 		if err != nil {
+			if err == io.EOF || err == context.Canceled || err == context.DeadlineExceeded {
+				return nil
+			}
 			return fmt.Errorf("failed to read kafka message, err: %w", err)
 		}
 
@@ -37,8 +43,10 @@ func ConsumeEvents(ctx context.Context) error {
 			continue
 		}
 
+		slog.DebugContext(ctx, "kafka message received", "data", data)
+
 		if err := db.Write(ctx, db.Entry{
-			UserID:   data.UserId,
+			UserId:   data.UserId,
 			PlayedAt: data.PlayedAt,
 			TrackId:  data.TrackId,
 		}); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -22,6 +23,14 @@ type messageData struct {
 }
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	slog.SetDefault(logger)
+
+	slog.Info("service starting")
+
 	balancer := kafka.Hash{}
 	const playTopic = "play-events"
 
@@ -32,6 +41,7 @@ func main() {
 		Topic:    playTopic,
 		Balancer: &balancer,
 	})
+	defer writer.Close()
 
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -49,19 +59,22 @@ func main() {
 				PlayedAt: now.UnixMilli(),
 			}
 
+			slog.Debug("sending", "msg", msg)
+
 			msgBytes, err := json.Marshal(msg)
 			if err != nil {
 				log.Fatal(err)
 				return
 			}
 
-			writer.WriteMessages(ctx, kafka.Message{
-				Topic:      playTopic,
+			slog.Debug("writing")
+			if err := writer.WriteMessages(ctx, kafka.Message{
 				Key:        []byte(sampleUserId),
 				Value:      msgBytes,
-				WriterData: writer,
 				Time:       now,
-			})
+			}); err != nil {
+				slog.Error("failed to write kafka message", "err", err)
+			}
 		case <-ctx.Done():
 			return
 		}

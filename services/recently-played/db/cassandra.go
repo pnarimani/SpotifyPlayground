@@ -10,7 +10,7 @@ import (
 )
 
 type Entry struct {
-	UserID   string
+	UserId   string
 	PlayedAt int64
 	TrackId  string
 }
@@ -51,7 +51,7 @@ func Write(ctx context.Context, entry Entry) error {
 	query := `INSERT INTO plays_by_user (user_id, bucket_date, played_at, track_id, played_at_ts) 
 				VALUES (?, ?, ?, ?, ?)`
 
-	return session.Query(query, entry.UserID, bucketDate, playedAtUUID, entry.TrackId, playedAt).
+	return session.Query(query, entry.UserId, bucketDate, playedAtUUID, entry.TrackId, playedAt).
 		WithContext(ctx).
 		Exec()
 }
@@ -81,7 +81,7 @@ func Read(ctx context.Context, userId string, limit int) ([]Entry, error) {
 		var playedAt time.Time
 		for iter.Scan(&trackId, &playedAt) {
 			results = append(results, Entry{
-				UserID:   userId,
+				UserId:   userId,
 				PlayedAt: playedAt.UnixMilli(),
 				TrackId:  trackId,
 			})
