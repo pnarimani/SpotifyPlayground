@@ -12,10 +12,19 @@ type Entry struct {
 	TrackId  string `json:"track_id"`
 }
 
-func GetLastPlayedTracks(ctx context.Context, userId string) ([]Entry, error) {
-	count := config.GetRecentTracksCount()
+type Service struct {
+	config config.Config
+	db     db.Service
+}
 
-	dbResults, err := db.Read(ctx, userId, config.GetDatabaseReadCount())
+func New(config config.Config, db db.Service) Service {
+	return Service{config: config, db: db}
+}
+
+func (s *Service) GetLastPlayedTracks(ctx context.Context, userId string) ([]Entry, error) {
+	count := s.config.RecentTracksCount
+
+	dbResults, err := s.db.Read(ctx, userId, s.config.DatabaseReadCount)
 	if err != nil {
 		return nil, err
 	}

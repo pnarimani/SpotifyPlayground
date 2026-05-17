@@ -18,11 +18,20 @@ type messageData struct {
 	PlayedAt int64  `json:"played_at"`
 }
 
-func ConsumeEvents(ctx context.Context) error {
+type Service struct {
+	db     db.Service
+	config config.Config
+}
+
+func New(config config.Config, db db.Service) Service {
+	return Service{db, config}
+}
+
+func (s *Service) ConsumeEvents(ctx context.Context) error {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		GroupID: "recently-played",
 		Topic:   "play-events",
-		Brokers: config.GetKafkaBrokers(),
+		Brokers: s.config.KafkaBrokers,
 	})
 	defer reader.Close()
 
@@ -45,7 +54,7 @@ func ConsumeEvents(ctx context.Context) error {
 
 		slog.DebugContext(ctx, "kafka message received", "data", data)
 
-		if err := db.Write(ctx, db.Entry{
+		if err := s.db.Write(ctx, db.Entry{
 			UserId:   data.UserId,
 			PlayedAt: data.PlayedAt,
 			TrackId:  data.TrackId,

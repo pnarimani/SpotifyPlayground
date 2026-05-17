@@ -3,8 +3,27 @@ package config
 import (
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 )
+
+type Config struct {
+	RecentTracksCount int
+	DatabaseReadCount int
+	CassandraHosts    []string
+	KafkaBrokers      []string
+	LogLevel          slog.Level
+}
+
+func ReadFromEnv() Config {
+	return Config{
+		RecentTracksCount: readIntWithDefault("RECENT_TRACKS_COUNT", 50),
+		DatabaseReadCount: readIntWithDefault("DATABASE_READ_COUNT", 200),
+		CassandraHosts:    GetCassandraHosts(),
+		KafkaBrokers:      GetKafkaBrokers(),
+		LogLevel:          GetLogLevel(),
+	}
+}
 
 // TODO: read from env or config
 
@@ -22,6 +41,20 @@ func GetCassandraHosts() []string {
 
 func GetKafkaBrokers() []string {
 	return strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
+}
+
+func readIntWithDefault(key string, defaultValue int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	num, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+
+	return num
 }
 
 func GetLogLevel() slog.Level {

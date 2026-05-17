@@ -10,10 +10,18 @@ import (
 	"time"
 )
 
-func StartServer(ctx context.Context) error {
+type Server struct {
+	readService *reader.Service
+}
+
+func New(r *reader.Service) Server  {
+	return Server{readService: r}
+}
+
+func (s *Server) StartServer(ctx context.Context) error {
 	mux := http.NewServeMux()
 
-	registerRouts(mux)
+	s.registerRouts(mux)
 
 	server := &http.Server{
 		Addr:         ":8080",
@@ -41,13 +49,13 @@ func StartServer(ctx context.Context) error {
 	}
 }
 
-func registerRouts(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/1/recently-played/{userId}", getRecentlyPlayed)
+func (s *Server) registerRouts(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/1/recently-played/{userId}", s.getRecentlyPlayed)
 }
 
-func getRecentlyPlayed(writer http.ResponseWriter, req *http.Request) {
+func (s *Server) getRecentlyPlayed(writer http.ResponseWriter, req *http.Request) {
 	userId := req.PathValue("userId")
-	result, err := reader.GetLastPlayedTracks(req.Context(), userId)
+	result, err := s.readService.GetLastPlayedTracks(req.Context(), userId)
 	if err != nil {
 		slog.Error("failed to get last played tracks", "err", err)
 		writer.WriteHeader(http.StatusInternalServerError)

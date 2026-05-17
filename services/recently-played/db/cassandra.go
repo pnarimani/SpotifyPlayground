@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"recently_played/config"
 	"time"
 
 	"github.com/gocql/gocql"
@@ -15,49 +16,54 @@ type Entry struct {
 	TrackId  string
 }
 
-var session *gocql.Session
+type service struct {
+	session *gocql.Session
+}
 
-func Init(hosts []string) error {
-	cluster := gocql.NewCluster(hosts...)
+type Service interface {
+	Read(ctx context.Context, userId string, readCount int) ([]Entry, error)
+	Write(ctx context.Context, entry Entry) error
+	Close()
+}
+
+func New(config config.Config) (Service, error) {
+	cluster := gocql.NewCluster(config.CassandraHosts...)
 	cluster.Keyspace = "recently_played"
 	cluster.Consistency = gocql.LocalQuorum
 
 	s, err := cluster.CreateSession()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	session = s
-	return nil
+	return &service{session: s}, nil
 }
 
-func Close() {
-	if session != nil {
-		session.Close()
+func (s *service) Close() {
+	if s.session != nil {
+		s.session.Close()
 	}
 }
 
-func Write(ctx context.Context, entry Entry) error {
-	if session == nil {
-		return errors.New("call Init before attempting to Write")
+func (s *service) Write(ctx context.Context, entry Entry) error {
+	if s.session == nil {
+		return errors.New("session is nil")
 	}
 
 	playedAt := time.UnixMilli(entry.PlayedAt)
-
 	bucketDate := getBucketDate(playedAt)
-
 	playedAtUUID := gocql.UUIDFromTime(playedAt)
 
 	query := `INSERT INTO plays_by_user (user_id, bucket_date, played_at, track_id, played_at_ts) 
 				VALUES (?, ?, ?, ?, ?)`
 
-	return session.Query(query, entry.UserId, bucketDate, playedAtUUID, entry.TrackId, playedAt).
+	return s.session.Query(query, entry.UserId, bucketDate, playedAtUUID, entry.TrackId, playedAt).
 		WithContext(ctx).
 		Exec()
 }
 
-func Read(ctx context.Context, userId string, limit int) ([]Entry, error) {
-	if session == nil {
+func (s *service) Read(ctx context.Context, userId string, limit int) ([]Entry, error) {
+	if s.session == nil {
 		return nil, errors.New("call Init before attempting to Read")
 	}
 
@@ -74,8 +80,7 @@ func Read(ctx context.Context, userId string, limit int) ([]Entry, error) {
 		bucketDate := getBucketDate(t)
 		remaining := limit - len(results)
 
-		
-		iter := session.Query(query, userId, bucketDate, remaining).WithContext(ctx).Iter()
+		iter := s.session.Query(query, userId, bucketDate, remaining).WithContext(ctx).Iter()
 
 		var trackId string
 		var playedAt time.Time
@@ -88,7 +93,7 @@ func Read(ctx context.Context, userId string, limit int) ([]Entry, error) {
 		}
 
 		if err := iter.Close(); err != nil {
-			return results, err 
+			return results, err
 		}
 	}
 

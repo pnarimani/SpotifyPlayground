@@ -9,6 +9,7 @@ import (
 	"recently_played/config"
 	"recently_played/consumer"
 	"recently_played/db"
+	"recently_played/reader"
 	"syscall"
 
 	"golang.org/x/sync/errgroup"
@@ -23,21 +24,29 @@ func main() {
 	}))
 
 	slog.SetDefault(logger)
-
 	slog.Info("service starting")
 
-	if err := db.Init(config.GetCassandraHosts()); err != nil {
+	conf := config.ReadFromEnv()
+
+	store, err := db.New(conf)
+	if err != nil {
 		slog.ErrorContext(ctx, "db initialization failed", "err", err)
 		return
 	}
-	defer db.Close()
+	defer store.Close()
 
 	slog.Info("database initialized")
 
+	readService := reader.New(conf, store)
+
+	serv := api.New(&readService)
+
+	cons := consumer.New(conf, store)
+
 	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error { return api.StartServer(gCtx) })
-	g.Go(func() error { return consumer.ConsumeEvents(gCtx) })
-	err := g.Wait()
+	g.Go(func() error { return serv.StartServer(gCtx) })
+	g.Go(func() error { return cons.ConsumeEvents(gCtx) })
+	err = g.Wait()
 
 	if err != nil {
 		slog.ErrorContext(ctx, err.Error())
