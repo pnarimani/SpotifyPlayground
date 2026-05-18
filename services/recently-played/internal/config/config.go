@@ -19,27 +19,17 @@ func ReadFromEnv() Config {
 	return Config{
 		RecentTracksCount: readIntWithDefault("RECENT_TRACKS_COUNT", 50),
 		DatabaseReadCount: readIntWithDefault("DATABASE_READ_COUNT", 200),
-		CassandraHosts:    GetCassandraHosts(),
-		KafkaBrokers:      GetKafkaBrokers(),
+		CassandraHosts:    getCassandraHosts(),
+		KafkaBrokers:      getKafkaBrokers(),
 		LogLevel:          GetLogLevel(),
 	}
 }
 
-// TODO: read from env or config
-
-func GetRecentTracksCount() int {
-	return 50
-}
-
-func GetDatabaseReadCount() int {
-	return GetRecentTracksCount() * 4
-}
-
-func GetCassandraHosts() []string {
+func getCassandraHosts() []string {
 	return strings.Split(os.Getenv("CASSANDRA_HOSTS"), ",")
 }
 
-func GetKafkaBrokers() []string {
+func getKafkaBrokers() []string {
 	return strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 }
 

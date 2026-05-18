@@ -2,8 +2,8 @@ package reader
 
 import (
 	"context"
-	"recently_played/config"
-	"recently_played/db"
+	"recently_played/internal/cassandra"
+	"recently_played/internal/config"
 )
 
 type Entry struct {
@@ -14,11 +14,11 @@ type Entry struct {
 
 type Service struct {
 	config config.Config
-	db     db.Service
+	db     cassandra.Service
 }
 
-func New(config config.Config, db db.Service) Service {
-	return Service{config: config, db: db}
+func New(config config.Config, db cassandra.Service) Service {
+	return Service{config, db}
 }
 
 func (s *Service) GetLastPlayedTracks(ctx context.Context, userId string) ([]Entry, error) {

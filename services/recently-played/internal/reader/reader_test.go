@@ -6,12 +6,12 @@ import (
 	"reflect"
 	"testing"
 
-	"recently_played/config"
-	"recently_played/db"
+	"recently_played/internal/cassandra"
+	"recently_played/internal/config"
 )
 
 type fakeDB struct {
-	results []db.Entry
+	results []cassandra.Entry
 	err     error
 
 	readCalls int
@@ -20,7 +20,7 @@ type fakeDB struct {
 	gotLimit  int
 }
 
-func (f *fakeDB) Read(ctx context.Context, userID string, limit int) ([]db.Entry, error) {
+func (f *fakeDB) Read(ctx context.Context, userID string, limit int) ([]cassandra.Entry, error) {
 	f.readCalls++
 	f.gotCtx = ctx
 	f.gotUserID = userID
@@ -29,15 +29,15 @@ func (f *fakeDB) Read(ctx context.Context, userID string, limit int) ([]db.Entry
 	return f.results, f.err
 }
 
-func (f *fakeDB) Write(context.Context, db.Entry) error { return nil }
-func (f *fakeDB) Close()                                {}
+func (f *fakeDB) Write(context.Context, cassandra.Entry) error { return nil }
+func (f *fakeDB) Close()                                       {}
 
 func TestService_GetLastPlayedTracks(t *testing.T) {
 	tests := []struct {
 		name    string
 		cfg     config.Config
 		userID  string
-		results []db.Entry
+		results []cassandra.Entry
 		dbErr   error
 
 		want    []Entry
@@ -60,7 +60,7 @@ func TestService_GetLastPlayedTracks(t *testing.T) {
 				DatabaseReadCount: 10,
 			},
 			userID: "user-42",
-			results: []db.Entry{
+			results: []cassandra.Entry{
 				{UserId: "ignored", PlayedAt: 500, TrackId: "track-a"},
 				{UserId: "ignored", PlayedAt: 400, TrackId: "track-b"},
 				{UserId: "ignored", PlayedAt: 300, TrackId: "track-a"},
@@ -80,7 +80,7 @@ func TestService_GetLastPlayedTracks(t *testing.T) {
 				DatabaseReadCount: 20,
 			},
 			userID: "user-99",
-			results: []db.Entry{
+			results: []cassandra.Entry{
 				{UserId: "other", PlayedAt: 900, TrackId: "track-x"},
 				{UserId: "other", PlayedAt: 800, TrackId: "track-y"},
 				{UserId: "other", PlayedAt: 700, TrackId: "track-x"},

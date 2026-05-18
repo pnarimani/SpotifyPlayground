@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"recently_played/config"
-	"recently_played/db"
+	"recently_played/internal/cassandra"
+	"recently_played/internal/config"
 
 	"github.com/segmentio/kafka-go"
 )
@@ -19,11 +19,11 @@ type messageData struct {
 }
 
 type Service struct {
-	db     db.Service
+	db     cassandra.Service
 	config config.Config
 }
 
-func New(config config.Config, db db.Service) Service {
+func New(config config.Config, db cassandra.Service) Service {
 	return Service{db, config}
 }
 
@@ -38,7 +38,7 @@ func (s *Service) ConsumeEvents(ctx context.Context) error {
 	for {
 		slog.DebugContext(ctx, "waiting for message")
 
-		msg, err := reader.ReadMessage(ctx)
+		msg, err := reader.FetchMessage(ctx)
 		if err != nil {
 			if err == io.EOF || err == context.Canceled || err == context.DeadlineExceeded {
 				return nil
@@ -54,12 +54,16 @@ func (s *Service) ConsumeEvents(ctx context.Context) error {
 
 		slog.DebugContext(ctx, "kafka message received", "data", data)
 
-		if err := s.db.Write(ctx, db.Entry{
+		if err := s.db.Write(ctx, cassandra.Entry{
 			UserId:   data.UserId,
 			PlayedAt: data.PlayedAt,
 			TrackId:  data.TrackId,
 		}); err != nil {
 			return fmt.Errorf("failed to write to cassandra, err: %w", err)
+		}
+
+		if err := reader.CommitMessages(ctx, msg); err != nil {
+			return fmt.Errorf("failed to commit kafka message, err: %w", err)
 		}
 	}
 }

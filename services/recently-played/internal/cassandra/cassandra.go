@@ -1,10 +1,10 @@
-package db
+package cassandra
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"recently_played/config"
+	"recently_played/internal/config"
 	"time"
 
 	"github.com/gocql/gocql"
@@ -54,7 +54,7 @@ func (s *service) Write(ctx context.Context, entry Entry) error {
 	bucketDate := getBucketDate(playedAt)
 	playedAtUUID := gocql.UUIDFromTime(playedAt)
 
-	query := `INSERT INTO plays_by_user (user_id, bucket_date, played_at, track_id, played_at_ts) 
+	query := `INSERT INTO plays_by_user (user_id, bucket_date, played_at, track_id, played_at_ts)
 				VALUES (?, ?, ?, ?, ?)`
 
 	return s.session.Query(query, entry.UserId, bucketDate, playedAtUUID, entry.TrackId, playedAt).

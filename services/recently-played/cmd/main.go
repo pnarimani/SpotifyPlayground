@@ -5,11 +5,11 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"recently_played/api"
-	"recently_played/config"
-	"recently_played/consumer"
-	"recently_played/db"
-	"recently_played/reader"
+	"recently_played/internal/api"
+	"recently_played/internal/cassandra"
+	"recently_played/internal/config"
+	"recently_played/internal/consumer"
+	"recently_played/internal/reader"
 	"syscall"
 
 	"golang.org/x/sync/errgroup"
@@ -28,7 +28,7 @@ func main() {
 
 	conf := config.ReadFromEnv()
 
-	store, err := db.New(conf)
+	store, err := cassandra.New(conf)
 	if err != nil {
 		slog.ErrorContext(ctx, "db initialization failed", "err", err)
 		return

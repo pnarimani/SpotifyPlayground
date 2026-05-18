@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"middleware"
 	"net/http"
-	"recently_played/reader"
+	"recently_played/internal/reader"
 	"time"
 )
 
@@ -14,7 +14,7 @@ type Server struct {
 	readService *reader.Service
 }
 
-func New(r *reader.Service) Server  {
+func New(r *reader.Service) Server {
 	return Server{readService: r}
 }
 
