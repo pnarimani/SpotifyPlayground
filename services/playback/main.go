@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	pb "contracts/events/playback/v1"
 	"encoding/json"
 	"log"
 	"log/slog"
@@ -16,12 +17,6 @@ import (
 
 const sampleUserId = "default_user_id"
 
-type messageData struct {
-	UserId   string `json:"user_id"`
-	TrackId  string `json:"track_id"`
-	PlayedAt int64  `json:"played_at"`
-}
-
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
@@ -32,13 +27,12 @@ func main() {
 	slog.Info("service starting")
 
 	balancer := kafka.Hash{}
-	const playTopic = "play-events"
 
 	brokers := strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 
 	writer := kafka.NewWriter(kafka.WriterConfig{
 		Brokers:  brokers,
-		Topic:    playTopic,
+		Topic:    pb.PlayEventTopic,
 		Balancer: &balancer,
 	})
 	defer writer.Close()
@@ -53,10 +47,12 @@ func main() {
 		select {
 		case <-ticker.C:
 			now := time.Now()
-			msg := messageData{
-				UserId:   sampleUserId,
-				TrackId:  "sample_track_id",
-				PlayedAt: now.UnixMilli(),
+			msg := pb.EventMessage{
+				UserID: sampleUserId,
+				ClientMessage: pb.ClientMessage{
+					TrackId:         "sample_track_id",
+					ClientTimestamp: now.UnixMilli(),
+				},
 			}
 
 			slog.Debug("sending", "msg", msg)
@@ -69,9 +65,9 @@ func main() {
 
 			slog.Debug("writing")
 			if err := writer.WriteMessages(ctx, kafka.Message{
-				Key:        []byte(sampleUserId),
-				Value:      msgBytes,
-				Time:       now,
+				Key:   []byte(sampleUserId),
+				Value: msgBytes,
+				Time:  now,
 			}); err != nil {
 				slog.Error("failed to write kafka message", "err", err)
 			}

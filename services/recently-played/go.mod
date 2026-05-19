@@ -1,8 +1,9 @@
 module recently_played
 
-go 1.26
+go 1.26.3
 
 require (
+	contracts v0.0.0
 	github.com/gocql/gocql v1.7.0
 	github.com/segmentio/kafka-go v0.4.51
 	golang.org/x/sync v0.20.0
@@ -10,6 +11,8 @@ require (
 )
 
 replace middleware => ../middleware
+
+replace contracts => ../contracts
 
 require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect

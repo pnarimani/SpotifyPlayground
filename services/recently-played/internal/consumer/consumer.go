@@ -9,14 +9,10 @@ import (
 	"recently_played/internal/cassandra"
 	"recently_played/internal/config"
 
+	playback "contracts/events/playback/v1"
+
 	"github.com/segmentio/kafka-go"
 )
-
-type messageData struct {
-	UserId   string `json:"user_id"`
-	TrackId  string `json:"track_id"`
-	PlayedAt int64  `json:"played_at"`
-}
 
 type Service struct {
 	db     cassandra.Service
@@ -30,7 +26,7 @@ func New(config config.Config, db cassandra.Service) Service {
 func (s *Service) ConsumeEvents(ctx context.Context) error {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		GroupID: "recently-played",
-		Topic:   "play-events",
+		Topic:   playback.PlayEventTopic,
 		Brokers: s.config.KafkaBrokers,
 	})
 	defer reader.Close()
@@ -46,7 +42,7 @@ func (s *Service) ConsumeEvents(ctx context.Context) error {
 			return fmt.Errorf("failed to read kafka message, err: %w", err)
 		}
 
-		data := messageData{}
+		data := playback.EventMessage{}
 		if err := json.Unmarshal(msg.Value, &data); err != nil {
 			slog.ErrorContext(ctx, "failed to parse json", "json", string(msg.Value), "key", string(msg.Key))
 			continue
@@ -55,8 +51,8 @@ func (s *Service) ConsumeEvents(ctx context.Context) error {
 		slog.DebugContext(ctx, "kafka message received", "data", data)
 
 		if err := s.db.Write(ctx, cassandra.Entry{
-			UserId:   data.UserId,
-			PlayedAt: data.PlayedAt,
+			UserId:   data.UserID,
+			PlayedAt: data.ClientTimestamp,
 			TrackId:  data.TrackId,
 		}); err != nil {
 			return fmt.Errorf("failed to write to cassandra, err: %w", err)
