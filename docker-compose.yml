@@ -248,3 +248,15 @@ services:
       - 9044:9042
     volumes:
       - cassandra-3:/var/lib/cassandra:rw
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    networks:
+      - myNetwork
+    depends_on:
+      recently-played:
+        condition: service_started
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
