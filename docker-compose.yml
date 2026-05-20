@@ -11,6 +11,7 @@ volumes:
   cassandra-1:
   cassandra-2:
   cassandra-3:
+  royalties-postgres-data:
 
 x-common-controller: &controller-defaults
   image: "apache/kafka:latest"
@@ -94,7 +95,9 @@ x-common-cassandra: &cassandra-defaults
 
 services:
   playback:
-    build: ./services/playback
+    build:
+      context: ./services
+      dockerfile: ./playback/Dockerfile
     networks:
       - myNetwork
     depends_on:
@@ -260,3 +263,54 @@ services:
         condition: service_started
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  royalties-postgres:
+    image: postgres:16-alpine
+    networks:
+      - myNetwork
+    environment:
+      POSTGRES_DB: royalties
+      POSTGRES_USER: royalties
+      POSTGRES_PASSWORD: royalties
+    ports:
+      - "5432:5432"
+    volumes:
+      - royalties-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U royalties -d royalties"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  royalties-migrate:
+    image: postgres:16-alpine
+    networks:
+      - myNetwork
+    depends_on:
+      royalties-postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: royalties
+    volumes:
+      - ./services/royalties/migrations:/migrations:ro
+    entrypoint: >
+      sh -c "for f in /migrations/*.up.sql; do
+        psql -h royalties-postgres -U royalties -d royalties -f $$f;
+      done"
+    restart: no
+
+  royalties:
+    build:
+      context: ./services
+      dockerfile: ./royalties/Dockerfile
+    networks:
+      - myNetwork
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      royalties-migrate:
+        condition: service_completed_successfully
+    environment:
+       KAFKA_BROKERS: k-broker-1:29092,k-broker-2:29092,k-broker-3:29092
+       POSTGRES_DSN: postgres://royalties:royalties@royalties-postgres:5432/royalties?sslmode=disable
+       LOG_LEVEL: debug

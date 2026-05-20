@@ -26,9 +26,9 @@ func main() {
 	slog.SetDefault(logger)
 	slog.Info("service starting")
 
-	conf := config.ReadFromEnv()
+	cfg := config.ReadFromEnv()
 
-	store, err := cassandra.New(conf)
+	store, err := cassandra.New(cfg)
 	if err != nil {
 		slog.ErrorContext(ctx, "db initialization failed", "err", err)
 		return
@@ -37,11 +37,11 @@ func main() {
 
 	slog.Info("database initialized")
 
-	readService := reader.New(conf, store)
+	readService := reader.New(cfg, store)
 
 	serv := api.New(&readService)
 
-	cons := consumer.New(conf, store)
+	cons := consumer.New(cfg, store)
 
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error { return serv.StartServer(gCtx) })

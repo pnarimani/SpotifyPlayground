@@ -1,11 +1,18 @@
 FROM golang:1.26-alpine AS builder
 WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download && go mod verify
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o server
 
-FROM alpine
+COPY contracts/go.mod ./contracts/
+COPY playback/go.mod playback/go.sum ./playback/
+
+RUN cd /app/playback && go mod download
+
+COPY contracts ./contracts
+COPY playback ./playback
+
+WORKDIR /app/playback
+RUN GOWORK=off CGO_ENABLED=0 GOOS=linux go build -o /app/server .
+
+FROM alpine:3.20
 WORKDIR /app
-COPY --from=builder /app/server .
-CMD [ "./server" ]
+COPY --from=builder /app/server ./server
+CMD ["./server"]
