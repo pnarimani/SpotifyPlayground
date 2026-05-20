@@ -1,5 +1,8 @@
 networks:
   myNetwork:
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
 
 volumes:
   kafka-1001:
@@ -87,11 +90,11 @@ x-common-cassandra: &cassandra-defaults
     MAX_HEAP_SIZE: 512M
     HEAP_NEWSIZE: 128M
   healthcheck:
-    test: ["CMD-SHELL", "cqlsh localhost 9042 -e 'describe cluster'"]
+    test: ["CMD-SHELL", "cqlsh localhost 9042 -e 'describe cluster' && nodetool status | grep -c 'UN' | grep -q $(nodetool status | grep -c '^[UD][NLJM]')"]
     interval: 30s
-    start_period: 2m
-    timeout: 5s
-    retries: 3
+    start_period: 3m
+    timeout: 10s
+    retries: 5
 
 services:
   playback:
@@ -105,6 +108,16 @@ services:
         condition: service_completed_successfully
     environment:
       KAFKA_BROKERS: k-broker-1:29092,k-broker-2:29092,k-broker-3:29092
+
+  auth:
+    build:
+      context: ./services
+      dockerfile: ./auth/Dockerfile
+    networks:
+      - myNetwork
+    environment:
+      JWT_SIGNING_KEY: SampleSigningKey
+
   recently-played:
     build:
       context: ./services
@@ -231,6 +244,9 @@ services:
       - 9042:9042
     volumes:
       - cassandra-1:/var/lib/cassandra:rw
+    networks:
+      myNetwork:
+        ipv4_address: 172.18.0.200
 
   cassandra-2:
     <<: *cassandra-defaults
@@ -241,6 +257,9 @@ services:
       - 9043:9042
     volumes:
       - cassandra-2:/var/lib/cassandra:rw
+    networks:
+      myNetwork:
+        ipv4_address: 172.18.0.201
 
   cassandra-3:
     <<: *cassandra-defaults
@@ -251,6 +270,9 @@ services:
       - 9044:9042
     volumes:
       - cassandra-3:/var/lib/cassandra:rw
+    networks:
+      myNetwork:
+        ipv4_address: 172.18.0.202
 
   nginx:
     image: nginx:alpine
@@ -259,6 +281,8 @@ services:
     networks:
       - myNetwork
     depends_on:
+      auth:
+        condition: service_started
       recently-played:
         condition: service_started
     volumes:

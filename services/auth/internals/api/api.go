@@ -1,21 +1,22 @@
 package api
 
 import (
+	"auth/internals/signup"
+	"auth/internals/validation"
 	"context"
 	"encoding/json"
 	"log/slog"
 	"middleware"
 	"net/http"
-	"recently_played/internal/reader"
 	"time"
 )
 
 type Server struct {
-	readService *reader.Service
+	logger *slog.Logger
 }
 
-func New(r *reader.Service) Server {
-	return Server{readService: r}
+func New(logger *slog.Logger) Server {
+	return Server{logger}
 }
 
 func (s *Server) StartServer(ctx context.Context) error {
@@ -50,18 +51,36 @@ func (s *Server) StartServer(ctx context.Context) error {
 }
 
 func (s *Server) registerRouts(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/1/recently-played", s.getRecentlyPlayed)
+	mux.HandleFunc("GET /api/1/auth/signup", s.handleSignup)
+	mux.HandleFunc("GET /api/1/auth/validate", s.validateJwt)
 }
 
-func (s *Server) getRecentlyPlayed(writer http.ResponseWriter, req *http.Request) {
-	userId := req.Header.Get("X-User-Id")
-	result, err := s.readService.GetLastPlayedTracks(req.Context(), userId)
+func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
+	resp, err := signup.Signup()
 	if err != nil {
-		slog.Error("failed to get last played tracks", "err", err)
-		writer.WriteHeader(http.StatusInternalServerError)
+		s.logger.ErrorContext(r.Context(), "failed to signup", "err", err)
+		w.WriteHeader(500)
 		return
 	}
 
-	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(result)
+	respJson, err := json.Marshal(resp)
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "failed to marshal response json", "err", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.WriteHeader(200)
+	w.Write(respJson)
+}
+
+func (s *Server) validateJwt(w http.ResponseWriter, r *http.Request) {
+	userID, ok := validation.Validate(r)
+	if !ok {
+		w.WriteHeader(403)
+		return
+	}
+
+	w.WriteHeader(200)
+	w.Header().Add("X-User-Id", userID)
 }
