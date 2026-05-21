@@ -35,6 +35,58 @@ func (m *mockRepo) ListAlbumTracks(ctx context.Context, albumID string) ([]album
 	return m.tracks, nil
 }
 
+func (m *mockRepo) CreateAlbum(ctx context.Context, params albums.CreateAlbumParams) (*albums.Album, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.album, nil
+}
+
+func (m *mockRepo) UpdateAlbum(ctx context.Context, id string, params albums.UpdateAlbumParams) (*albums.Album, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.album, nil
+}
+
+func (m *mockRepo) DeleteAlbum(ctx context.Context, id string) error {
+	return m.err
+}
+
+func (m *mockRepo) GetTrack(ctx context.Context, id string) (*albums.Track, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	if len(m.tracks) > 0 {
+		return &m.tracks[0], nil
+	}
+	return nil, albums.ErrNotFound
+}
+
+func (m *mockRepo) CreateTrack(ctx context.Context, params albums.CreateTrackParams) (*albums.Track, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	if len(m.tracks) > 0 {
+		return &m.tracks[0], nil
+	}
+	return &albums.Track{}, nil
+}
+
+func (m *mockRepo) UpdateTrack(ctx context.Context, id string, params albums.UpdateTrackParams) (*albums.Track, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	if len(m.tracks) > 0 {
+		return &m.tracks[0], nil
+	}
+	return &albums.Track{}, nil
+}
+
+func (m *mockRepo) DeleteTrack(ctx context.Context, id string) error {
+	return m.err
+}
+
 func TestGetAlbum_Success(t *testing.T) {
 	repo := &mockRepo{
 		album: &albums.Album{

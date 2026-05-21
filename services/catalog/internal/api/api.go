@@ -25,6 +25,7 @@ type AlbumResponse struct {
 
 type TrackResponse struct {
 	ID          string `json:"id"`
+	AlbumID     string `json:"album_id"`
 	Name        string `json:"name"`
 	TrackNumber int    `json:"track_number"`
 	DiscNumber  int    `json:"disc_number"`
@@ -39,6 +40,38 @@ type ListAlbumsResponse struct {
 
 type ErrorResponse struct {
 	Error string `json:"error"`
+}
+
+// Request DTOs
+
+type CreateAlbumRequest struct {
+	Title       string  `json:"title"`
+	ReleaseDate *string `json:"release_date,omitempty"`
+	CoverURL    *string `json:"cover_url,omitempty"`
+	Label       *string `json:"label,omitempty"`
+}
+
+type UpdateAlbumRequest struct {
+	Title       *string `json:"title,omitempty"`
+	ReleaseDate *string `json:"release_date,omitempty"`
+	CoverURL    *string `json:"cover_url,omitempty"`
+	Label       *string `json:"label,omitempty"`
+}
+
+type CreateTrackRequest struct {
+	Name        string `json:"name"`
+	TrackNumber int    `json:"track_number"`
+	DiscNumber  int    `json:"disc_number"`
+	DurationMs  int    `json:"duration_ms"`
+	Explicit    bool   `json:"explicit"`
+}
+
+type UpdateTrackRequest struct {
+	Name        *string `json:"name,omitempty"`
+	TrackNumber *int    `json:"track_number,omitempty"`
+	DiscNumber  *int    `json:"disc_number,omitempty"`
+	DurationMs  *int    `json:"duration_ms,omitempty"`
+	Explicit    *bool   `json:"explicit,omitempty"`
 }
 
 // Server
@@ -88,8 +121,20 @@ func (s *Server) StartServer(ctx context.Context) error {
 
 func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", s.healthCheck)
+
+	// Albums
 	mux.HandleFunc("GET /api/1/albums", s.listAlbums)
 	mux.HandleFunc("GET /api/1/albums/{albumID}", s.getAlbum)
+	mux.HandleFunc("POST /api/1/albums", s.createAlbum)
+	mux.HandleFunc("PUT /api/1/albums/{albumID}", s.updateAlbum)
+	mux.HandleFunc("DELETE /api/1/albums/{albumID}", s.deleteAlbum)
+
+	// Tracks
+	mux.HandleFunc("GET /api/1/albums/{albumID}/tracks", s.listAlbumTracks)
+	mux.HandleFunc("GET /api/1/tracks/{trackID}", s.getTrack)
+	mux.HandleFunc("POST /api/1/albums/{albumID}/tracks", s.createTrack)
+	mux.HandleFunc("PUT /api/1/tracks/{trackID}", s.updateTrack)
+	mux.HandleFunc("DELETE /api/1/tracks/{trackID}", s.deleteTrack)
 }
 
 func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
@@ -144,6 +189,236 @@ func (s *Server) getAlbum(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, albumToResponse(album))
 }
 
+func (s *Server) createAlbum(w http.ResponseWriter, r *http.Request) {
+	var req CreateAlbumRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	params := albums.CreateAlbumParams{
+		Title:    req.Title,
+		CoverURL: req.CoverURL,
+		Label:    req.Label,
+	}
+
+	if req.ReleaseDate != nil {
+		t, err := time.Parse("2006-01-02", *req.ReleaseDate)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid release_date format, use YYYY-MM-DD"})
+			return
+		}
+		params.ReleaseDate = &t
+	}
+
+	album, err := s.albums.CreateAlbum(r.Context(), params)
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "failed to create album", "err", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, albumToResponse(album))
+}
+
+func (s *Server) updateAlbum(w http.ResponseWriter, r *http.Request) {
+	albumID := r.PathValue("albumID")
+	if albumID == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "album id is required"})
+		return
+	}
+
+	var req UpdateAlbumRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	params := albums.UpdateAlbumParams{
+		Title:    req.Title,
+		CoverURL: req.CoverURL,
+		Label:    req.Label,
+	}
+
+	if req.ReleaseDate != nil {
+		t, err := time.Parse("2006-01-02", *req.ReleaseDate)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid release_date format, use YYYY-MM-DD"})
+			return
+		}
+		params.ReleaseDate = &t
+	}
+
+	album, err := s.albums.UpdateAlbum(r.Context(), albumID, params)
+	if err != nil {
+		if errors.Is(err, albums.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "album not found"})
+			return
+		}
+		s.logger.ErrorContext(r.Context(), "failed to update album", "err", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, albumToResponse(album))
+}
+
+func (s *Server) deleteAlbum(w http.ResponseWriter, r *http.Request) {
+	albumID := r.PathValue("albumID")
+	if albumID == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "album id is required"})
+		return
+	}
+
+	err := s.albums.DeleteAlbum(r.Context(), albumID)
+	if err != nil {
+		if errors.Is(err, albums.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "album not found"})
+			return
+		}
+		s.logger.ErrorContext(r.Context(), "failed to delete album", "err", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) listAlbumTracks(w http.ResponseWriter, r *http.Request) {
+	albumID := r.PathValue("albumID")
+	if albumID == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "album id is required"})
+		return
+	}
+
+	album, err := s.albums.GetAlbum(r.Context(), albumID)
+	if err != nil {
+		if errors.Is(err, albums.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "album not found"})
+			return
+		}
+		s.logger.ErrorContext(r.Context(), "failed to get album tracks", "err", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	tracks := make([]TrackResponse, 0, len(album.Tracks))
+	for _, t := range album.Tracks {
+		tracks = append(tracks, trackToResponse(&t))
+	}
+
+	writeJSON(w, http.StatusOK, tracks)
+}
+
+func (s *Server) getTrack(w http.ResponseWriter, r *http.Request) {
+	trackID := r.PathValue("trackID")
+	if trackID == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "track id is required"})
+		return
+	}
+
+	track, err := s.albums.GetTrack(r.Context(), trackID)
+	if err != nil {
+		if errors.Is(err, albums.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "track not found"})
+			return
+		}
+		s.logger.ErrorContext(r.Context(), "failed to get track", "err", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, trackToResponse(track))
+}
+
+func (s *Server) createTrack(w http.ResponseWriter, r *http.Request) {
+	albumID := r.PathValue("albumID")
+	if albumID == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "album id is required"})
+		return
+	}
+
+	var req CreateTrackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	params := albums.CreateTrackParams{
+		AlbumID:     albumID,
+		Name:        req.Name,
+		TrackNumber: req.TrackNumber,
+		DiscNumber:  req.DiscNumber,
+		DurationMs:  req.DurationMs,
+		Explicit:    req.Explicit,
+	}
+
+	track, err := s.albums.CreateTrack(r.Context(), params)
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "failed to create track", "err", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, trackToResponse(track))
+}
+
+func (s *Server) updateTrack(w http.ResponseWriter, r *http.Request) {
+	trackID := r.PathValue("trackID")
+	if trackID == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "track id is required"})
+		return
+	}
+
+	var req UpdateTrackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	params := albums.UpdateTrackParams{
+		Name:        req.Name,
+		TrackNumber: req.TrackNumber,
+		DiscNumber:  req.DiscNumber,
+		DurationMs:  req.DurationMs,
+		Explicit:    req.Explicit,
+	}
+
+	track, err := s.albums.UpdateTrack(r.Context(), trackID, params)
+	if err != nil {
+		if errors.Is(err, albums.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "track not found"})
+			return
+		}
+		s.logger.ErrorContext(r.Context(), "failed to update track", "err", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, trackToResponse(track))
+}
+
+func (s *Server) deleteTrack(w http.ResponseWriter, r *http.Request) {
+	trackID := r.PathValue("trackID")
+	if trackID == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "track id is required"})
+		return
+	}
+
+	err := s.albums.DeleteTrack(r.Context(), trackID)
+	if err != nil {
+		if errors.Is(err, albums.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "track not found"})
+			return
+		}
+		s.logger.ErrorContext(r.Context(), "failed to delete track", "err", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // Helpers
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -165,16 +440,21 @@ func albumToResponse(a *albums.Album) AlbumResponse {
 	if len(a.Tracks) > 0 {
 		resp.Tracks = make([]TrackResponse, 0, len(a.Tracks))
 		for _, t := range a.Tracks {
-			resp.Tracks = append(resp.Tracks, TrackResponse{
-				ID:          t.ID,
-				Name:        t.Name,
-				TrackNumber: t.TrackNumber,
-				DiscNumber:  t.DiscNumber,
-				DurationMs:  t.DurationMs,
-				Explicit:    t.Explicit,
-			})
+			resp.Tracks = append(resp.Tracks, trackToResponse(&t))
 		}
 	}
 
 	return resp
+}
+
+func trackToResponse(t *albums.Track) TrackResponse {
+	return TrackResponse{
+		ID:          t.ID,
+		AlbumID:     t.AlbumID,
+		Name:        t.Name,
+		TrackNumber: t.TrackNumber,
+		DiscNumber:  t.DiscNumber,
+		DurationMs:  t.DurationMs,
+		Explicit:    t.Explicit,
+	}
 }
