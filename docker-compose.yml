@@ -14,6 +14,7 @@ volumes:
   cassandra-1:
   cassandra-2:
   cassandra-3:
+  catalog-postgres-data:
   royalties-postgres-data:
 
 x-common-controller: &controller-defaults
@@ -97,12 +98,53 @@ x-common-cassandra: &cassandra-defaults
     retries: 5
 
 services:
+  catalog-postgres:
+    image: postgres:16-alpine
+    networks:
+      - myNetwork
+    environment:
+      POSTGRES_DB: catalog
+      POSTGRES_USER: catalog
+      POSTGRES_PASSWORD: catalog
+    ports:
+      - "5433:5432"
+    volumes:
+      - catalog-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catalog -d catalog"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  catalog-migrate:
+    image: postgres:16-alpine
+    networks:
+      - myNetwork
+    depends_on:
+      catalog-postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: catalog
+    volumes:
+      - ./services/catalog/migrations:/migrations:ro
+    entrypoint: >
+      sh -c "for f in /migrations/*.up.sql; do
+        psql -h catalog-postgres -U catalog -d catalog -f $$f;
+      done"
+    restart: no
+
   catalog:
     build:
       context: ./services
       dockerfile: ./catalog/Dockerfile
     networks:
       - myNetwork
+    depends_on:
+      catalog-migrate:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_DSN: postgres://catalog:catalog@catalog-postgres:5432/catalog?sslmode=disable
+      LOG_LEVEL: debug
 
   playback:
     build:
