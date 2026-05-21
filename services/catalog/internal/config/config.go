@@ -1,28 +1,30 @@
 package config
 
 import (
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
 )
 
 type Config struct {
-	LogLevel     slog.Level
-	PostgresDSN  string
+	LogLevel    slog.Level
+	PostgresDSN string
 }
 
-func ReadFromEnv() Config {
-	return Config{
-		PostgresDSN:  getPostgresDSN(),
-		LogLevel:     GetLogLevel(),
+func ReadFromEnv() (Config, error) {
+	dsn := os.Getenv("POSTGRES_DSN")
+	if dsn == "" {
+		return Config{}, errors.New("POSTGRES_DSN environment variable is required")
 	}
+
+	return Config{
+		PostgresDSN: dsn,
+		LogLevel:    getLogLevel(),
+	}, nil
 }
 
-func getPostgresDSN() string {
-	return os.Getenv("POSTGRES_DSN")
-}
-
-func GetLogLevel() slog.Level {
+func getLogLevel() slog.Level {
 	level := strings.ToLower(os.Getenv("LOG_LEVEL"))
 	switch level {
 	case "debug":

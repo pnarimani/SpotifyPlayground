@@ -1,8 +1,10 @@
 package postgres
 
 import (
+	"catalog/internal/albums"
 	"catalog/internal/config"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -12,15 +14,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func NewID() uuid.UUID {
-	id, err := uuid.NewV7()
-	if err != nil {
-		panic(fmt.Sprintf("failed to generate UUIDv7: %v", err))
-	}
-	return id
+type albumRow struct {
+	ID          uuid.UUID
+	Title       string
+	ReleaseDate *time.Time
+	CoverURL    *string
+	Label       *string
+	TotalTracks int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
-type Track struct {
+type trackRow struct {
 	ID          uuid.UUID
 	AlbumID     uuid.UUID
 	Name        string
@@ -32,43 +37,12 @@ type Track struct {
 	UpdatedAt   time.Time
 }
 
-type Album struct {
-	ID          uuid.UUID
-	Title       string
-	ReleaseDate *time.Time
-	CoverURL    *string
-	Label       *string
-	TotalTracks int
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-}
-
-type Artist struct {
-	ID        uuid.UUID
-	Name      string
-	ImageURL  *string
-	Bio       *string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
-type Cursor struct {
-	CreatedAt time.Time
-	ID        uuid.UUID
-}
-
-type store struct {
+type Store struct {
 	log  *slog.Logger
 	pool *pgxpool.Pool
 }
 
-type Store interface {
-	ListAlbums(ctx context.Context, cursor *Cursor, limit int) ([]Album, error)
-	ListAlbumTracks(ctx context.Context, albumID uuid.UUID) ([]Track, error)
-	Close() error
-}
-
-func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (Store, error) {
+func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Store, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -91,10 +65,42 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (Store, er
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
-	return &store{logger, pool}, nil
+	return &Store{logger, pool}, nil
 }
 
-func (s *store) ListAlbums(ctx context.Context, cursor *Cursor, limit int) ([]Album, error) {
+func (s *Store) GetAlbum(ctx context.Context, id string) (*albums.Album, error) {
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid album id: %w", err)
+	}
+
+	row := s.pool.QueryRow(ctx, `
+		SELECT id, title, release_date, cover_url, label, total_tracks, created_at, updated_at
+		FROM albums
+		WHERE deleted_at IS NULL AND id = $1
+	`, uid)
+
+	var a albumRow
+	if err := row.Scan(
+		&a.ID,
+		&a.Title,
+		&a.ReleaseDate,
+		&a.CoverURL,
+		&a.Label,
+		&a.TotalTracks,
+		&a.CreatedAt,
+		&a.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, albums.ErrNotFound
+		}
+		return nil, fmt.Errorf("scan album: %w", err)
+	}
+
+	return albumRowToDomain(&a), nil
+}
+
+func (s *Store) ListAlbums(ctx context.Context, cursor *albums.Cursor, limit int) ([]albums.Album, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
@@ -103,7 +109,6 @@ func (s *store) ListAlbums(ctx context.Context, cursor *Cursor, limit int) ([]Al
 	var err error
 
 	if cursor == nil {
-		// First page — no cursor, just grab the newest.
 		rows, err = s.pool.Query(ctx, `
 			SELECT id, title, release_date, cover_url, label, total_tracks, created_at, updated_at
 			FROM albums
@@ -112,7 +117,10 @@ func (s *store) ListAlbums(ctx context.Context, cursor *Cursor, limit int) ([]Al
 			LIMIT $1
 		`, limit)
 	} else {
-		// Keyset pagination: fetch rows older than the cursor position.
+		cursorID, parseErr := uuid.Parse(cursor.ID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid cursor id: %w", parseErr)
+		}
 		rows, err = s.pool.Query(ctx, `
 			SELECT id, title, release_date, cover_url, label, total_tracks, created_at, updated_at
 			FROM albums
@@ -120,16 +128,16 @@ func (s *store) ListAlbums(ctx context.Context, cursor *Cursor, limit int) ([]Al
 			  AND (created_at, id) < ($1, $2)
 			ORDER BY created_at DESC, id DESC
 			LIMIT $3
-		`, cursor.CreatedAt, cursor.ID, limit)
+		`, cursor.CreatedAt, cursorID, limit)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query albums: %w", err)
 	}
 	defer rows.Close()
 
-	var albums []Album
+	var result []albums.Album
 	for rows.Next() {
-		var a Album
+		var a albumRow
 		if err := rows.Scan(
 			&a.ID,
 			&a.Title,
@@ -142,27 +150,32 @@ func (s *store) ListAlbums(ctx context.Context, cursor *Cursor, limit int) ([]Al
 		); err != nil {
 			return nil, fmt.Errorf("scan album: %w", err)
 		}
-		albums = append(albums, a)
+		result = append(result, *albumRowToDomain(&a))
 	}
 
-	return albums, rows.Err()
+	return result, rows.Err()
 }
 
-func (s *store) ListAlbumTracks(ctx context.Context, albumID uuid.UUID) ([]Track, error) {
+func (s *Store) ListAlbumTracks(ctx context.Context, albumID string) ([]albums.Track, error) {
+	uid, err := uuid.Parse(albumID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid album id: %w", err)
+	}
+
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, album_id, name, track_number, disc_number, duration_ms, explicit, created_at, updated_at
 		FROM tracks
 		WHERE album_id = $1 AND deleted_at IS NULL
 		ORDER BY disc_number, track_number
-	`, albumID)
+	`, uid)
 	if err != nil {
 		return nil, fmt.Errorf("query tracks: %w", err)
 	}
 	defer rows.Close()
 
-	var tracks []Track
+	var tracks []albums.Track
 	for rows.Next() {
-		var t Track
+		var t trackRow
 		if err := rows.Scan(
 			&t.ID,
 			&t.AlbumID,
@@ -176,14 +189,36 @@ func (s *store) ListAlbumTracks(ctx context.Context, albumID uuid.UUID) ([]Track
 		); err != nil {
 			return nil, fmt.Errorf("scan track: %w", err)
 		}
-
-		tracks = append(tracks, t)
+		tracks = append(tracks, trackRowToDomain(&t))
 	}
 
 	return tracks, rows.Err()
 }
 
-func (s *store) Close() error {
+func (s *Store) Close() error {
 	s.pool.Close()
 	return nil
+}
+
+func albumRowToDomain(a *albumRow) *albums.Album {
+	return &albums.Album{
+		ID:          a.ID.String(),
+		Title:       a.Title,
+		ReleaseDate: a.ReleaseDate,
+		CoverURL:    a.CoverURL,
+		Label:       a.Label,
+		TotalTracks: a.TotalTracks,
+	}
+}
+
+func trackRowToDomain(t *trackRow) albums.Track {
+	return albums.Track{
+		ID:          t.ID.String(),
+		AlbumID:     t.AlbumID.String(),
+		Name:        t.Name,
+		TrackNumber: t.TrackNumber,
+		DiscNumber:  t.DiscNumber,
+		DurationMs:  t.DurationMs,
+		Explicit:    t.Explicit,
+	}
 }
