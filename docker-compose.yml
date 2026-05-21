@@ -97,6 +97,13 @@ x-common-cassandra: &cassandra-defaults
     retries: 5
 
 services:
+  catalog:
+    build:
+      context: ./services
+      dockerfile: ./catalog/Dockerfile
+    networks:
+      - myNetwork
+
   playback:
     build:
       context: ./services
