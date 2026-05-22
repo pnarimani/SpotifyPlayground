@@ -3,6 +3,7 @@ package main
 import (
 	"catalog/internal/albums"
 	"catalog/internal/api"
+	"catalog/internal/cache"
 	"catalog/internal/config"
 	"catalog/internal/postgres"
 	"context"
@@ -28,14 +29,21 @@ func main() {
 
 	logger.InfoContext(ctx, "service starting")
 
-	store, err := postgres.New(ctx, cfg, logger.With("component", "postgres"))
+	pg, err := postgres.New(ctx, cfg, logger.With("component", "postgres"))
 	if err != nil {
 		logger.ErrorContext(ctx, "postgres initialization failed", "err", err)
 		os.Exit(1)
 	}
-	defer store.Close()
+	defer pg.Close()
 
-	albumsService := albums.New(store)
+	cachedRepo, err := cache.New(ctx, pg, logger.With("component", "cache"), cfg)
+	if err != nil {
+		logger.ErrorContext(ctx, "redis initialization failed", "err", err)
+		os.Exit(1)
+	}
+	defer cachedRepo.Close()
+
+	albumsService := albums.New(cachedRepo)
 
 	server := api.New(logger.With("component", "server"), albumsService)
 	if err := server.StartServer(ctx); err != nil {

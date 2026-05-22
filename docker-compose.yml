@@ -15,6 +15,7 @@ volumes:
   cassandra-2:
   cassandra-3:
   catalog-postgres-data:
+  catalog-redis-data:
   royalties-postgres-data:
 
 x-common-controller: &controller-defaults
@@ -133,6 +134,20 @@ services:
       done"
     restart: no
 
+  catalog-redis:
+    image: redis:7-alpine
+    networks:
+      - myNetwork
+    ports:
+      - "6379:6379"
+    volumes:
+      - catalog-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   catalog:
     build:
       context: ./services
@@ -142,8 +157,11 @@ services:
     depends_on:
       catalog-migrate:
         condition: service_completed_successfully
+      catalog-redis:
+        condition: service_healthy
     environment:
       POSTGRES_DSN: postgres://catalog:catalog@catalog-postgres:5432/catalog?sslmode=disable
+      REDIS_URL: redis://catalog-redis:6379/0
       LOG_LEVEL: debug
 
   playback:

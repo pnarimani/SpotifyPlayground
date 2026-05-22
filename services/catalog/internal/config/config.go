@@ -10,6 +10,7 @@ import (
 type Config struct {
 	LogLevel    slog.Level
 	PostgresDSN string
+	RedisURL    string
 }
 
 func ReadFromEnv() (Config, error) {
@@ -18,8 +19,14 @@ func ReadFromEnv() (Config, error) {
 		return Config{}, errors.New("POSTGRES_DSN environment variable is required")
 	}
 
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		return Config{}, errors.New("REDIS_URL environment variable is required")
+	}
+
 	return Config{
 		PostgresDSN: dsn,
+		RedisURL:    redisURL,
 		LogLevel:    getLogLevel(),
 	}, nil
 }
