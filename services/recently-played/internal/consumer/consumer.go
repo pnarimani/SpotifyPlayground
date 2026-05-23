@@ -2,14 +2,13 @@ package consumer
 
 import (
 	"context"
+	"contracts/events/playback/v1"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"recently_played/internal/cassandra"
 	"recently_played/internal/config"
-
-	playback "contracts/events/playback/v1"
 
 	"github.com/segmentio/kafka-go"
 )

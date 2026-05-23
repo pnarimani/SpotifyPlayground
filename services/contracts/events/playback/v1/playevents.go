@@ -1,4 +1,4 @@
-package v1
+package playback
 
 const PlayEventTopic = "play-events"
 

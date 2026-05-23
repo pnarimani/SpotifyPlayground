@@ -1,0 +1,11 @@
+go 1.26.3
+
+use (
+	./auth
+	./catalog
+	./contracts
+	./middleware
+	./playback
+	./recently-played
+	./royalties
+)
