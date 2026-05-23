@@ -41,20 +41,6 @@ func (m *mockRepo) ListAlbums(_ context.Context, _ *albums.Cursor, _ int) ([]alb
 func (m *mockRepo) ListAlbumTracks(_ context.Context, _ string) ([]albums.Track, error) {
 	return nil, nil
 }
-func (m *mockRepo) CreateAlbum(_ context.Context, _ albums.CreateAlbumParams) (*albums.Album, error) {
-	return m.album, nil
-}
-func (m *mockRepo) UpdateAlbum(_ context.Context, _ string, _ albums.UpdateAlbumParams) (*albums.Album, error) {
-	return m.album, nil
-}
-func (m *mockRepo) DeleteAlbum(_ context.Context, _ string) error { return nil }
-func (m *mockRepo) CreateTrack(_ context.Context, _ albums.CreateTrackParams) (*albums.Track, error) {
-	return m.track, nil
-}
-func (m *mockRepo) UpdateTrack(_ context.Context, _ string, _ albums.UpdateTrackParams) (*albums.Track, error) {
-	return m.track, nil
-}
-func (m *mockRepo) DeleteTrack(_ context.Context, _ string) error { return nil }
 
 func setupTestCache(t *testing.T, repo *mockRepo) *CachedRepository {
 	t.Helper()
@@ -74,7 +60,11 @@ func setupTestCache(t *testing.T, repo *mockRepo) *CachedRepository {
 		rdb.Close()
 	})
 
-	return New(repo, rdb, nil)
+	return &CachedRepository{
+		repo: repo,
+		rdb:  rdb,
+		ttl:  defaultTTL,
+	}
 }
 
 func TestGetAlbum_CacheHit(t *testing.T) {
@@ -111,38 +101,6 @@ func TestGetAlbum_CacheHit(t *testing.T) {
 	}
 	if repo.getAlbumCalls.Load() != 1 {
 		t.Fatalf("expected 1 DB call (cache hit), got %d", repo.getAlbumCalls.Load())
-	}
-}
-
-func TestGetAlbum_Invalidation(t *testing.T) {
-	repo := &mockRepo{
-		album: &albums.Album{
-			ID:          "test-album-id",
-			Title:       "Test Album",
-			TotalTracks: 5,
-		},
-	}
-
-	c := setupTestCache(t, repo)
-	ctx := context.Background()
-
-	// Populate cache
-	_, err := c.GetAlbum(ctx, "test-album-id")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Invalidate via update
-	title := "Updated Album"
-	_, _ = c.UpdateAlbum(ctx, "test-album-id", albums.UpdateAlbumParams{Title: &title})
-
-	// Next read should hit DB again
-	_, err = c.GetAlbum(ctx, "test-album-id")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if repo.getAlbumCalls.Load() != 2 {
-		t.Fatalf("expected 2 DB calls after invalidation, got %d", repo.getAlbumCalls.Load())
 	}
 }
 

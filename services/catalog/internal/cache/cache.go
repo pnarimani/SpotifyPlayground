@@ -112,93 +112,12 @@ func (c *CachedRepository) GetTrack(ctx context.Context, id string) (*albums.Tra
 	return v.(*albums.Track), nil
 }
 
-func (c *CachedRepository) CreateAlbum(ctx context.Context, params albums.CreateAlbumParams) (*albums.Album, error) {
-	return c.repo.CreateAlbum(ctx, params)
-}
-
-func (c *CachedRepository) UpdateAlbum(ctx context.Context, id string, params albums.UpdateAlbumParams) (*albums.Album, error) {
-	album, err := c.repo.UpdateAlbum(ctx, id, params)
-	if err != nil {
-		return nil, err
-	}
-
-	c.invalidateAlbum(ctx, id)
-	return album, nil
-}
-
-func (c *CachedRepository) DeleteAlbum(ctx context.Context, id string) error {
-	// Get tracks before deleting so we can invalidate them
-	tracks, _ := c.repo.ListAlbumTracks(ctx, id)
-
-	if err := c.repo.DeleteAlbum(ctx, id); err != nil {
-		return err
-	}
-
-	c.invalidateAlbum(ctx, id)
-	for _, t := range tracks {
-		c.invalidateTrack(ctx, t.ID)
-	}
-
-	return nil
-}
-
-func (c *CachedRepository) CreateTrack(ctx context.Context, params albums.CreateTrackParams) (*albums.Track, error) {
-	track, err := c.repo.CreateTrack(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-
-	c.invalidateAlbum(ctx, params.AlbumID)
-	return track, nil
-}
-
-func (c *CachedRepository) UpdateTrack(ctx context.Context, id string, params albums.UpdateTrackParams) (*albums.Track, error) {
-	track, err := c.repo.UpdateTrack(ctx, id, params)
-	if err != nil {
-		return nil, err
-	}
-
-	c.invalidateTrack(ctx, id)
-	c.invalidateAlbum(ctx, track.AlbumID)
-	return track, nil
-}
-
-func (c *CachedRepository) DeleteTrack(ctx context.Context, id string) error {
-	// Get the track first to know which album to invalidate
-	track, err := c.repo.GetTrack(ctx, id)
-	if err != nil {
-		return c.repo.DeleteTrack(ctx, id)
-	}
-
-	if err := c.repo.DeleteTrack(ctx, id); err != nil {
-		return err
-	}
-
-	c.invalidateTrack(ctx, id)
-	c.invalidateAlbum(ctx, track.AlbumID)
-	return nil
-}
-
 func (c *CachedRepository) ListAlbums(ctx context.Context, cursor *albums.Cursor, limit int) ([]albums.Album, error) {
 	return c.repo.ListAlbums(ctx, cursor, limit)
 }
 
 func (c *CachedRepository) ListAlbumTracks(ctx context.Context, albumID string) ([]albums.Track, error) {
 	return c.repo.ListAlbumTracks(ctx, albumID)
-}
-
-func (c *CachedRepository) invalidateAlbum(ctx context.Context, id string) {
-	key := albumKeyPrefix + id
-	if err := c.rdb.Del(ctx, key).Err(); err != nil {
-		c.log.WarnContext(ctx, "cache invalidation failed", "key", key, "err", err)
-	}
-}
-
-func (c *CachedRepository) invalidateTrack(ctx context.Context, id string) {
-	key := trackKeyPrefix + id
-	if err := c.rdb.Del(ctx, key).Err(); err != nil {
-		c.log.WarnContext(ctx, "cache invalidation failed", "key", key, "err", err)
-	}
 }
 
 func (c *CachedRepository) Close() error {
